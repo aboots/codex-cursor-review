@@ -1,0 +1,9 @@
+{
+  "version": "0.4.0",
+  "packages": {
+    "agents-council-linux-x64": "sha512-ejmOfEzLmtRsTL+D/jnYyQtwUDFDU1Cgn5QJ2SHr9WhSXlpGfQeJvV5RT+3dwh3yIGSbmMY5esWWXGamBIvCcA==",
+    "agents-council-linux-arm64": "sha512-AKggabnA58QFOlv8Aad8MFn0wreHUVBHcmuKt630fICApWl31bxDBIeUnr20B5ptFYq3VE2cCb/WkqmpPlI4oQ==",
+    "agents-council-darwin-x64": "sha512-1LNERpLAGbwxNRsJ7SwuCpCE5dQPp3BKiNLPI4l3Dp1PLsh5/FY/mlOPbM8vOpP/N3YHuwKS3Ka/VL8G1143NA==",
+    "agents-council-darwin-arm64": "sha512-xKz+ttOwTJ9kNJrBfB2tOlEl11C5bLpM98qcup9MFN0f4EnzVIarZZPiYTi6ItvPBx7YpI/oyMYg6rPEcHU6Ew=="
+  }
+}

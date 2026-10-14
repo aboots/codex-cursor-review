@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -110,6 +111,51 @@ print('progress only, not the review')''', 0, reviewer='codex')
         cfg = review.load_config(p)
         self.assertEqual(cfg['reviewers']['cursor']['model'], 'chosen-model')
         self.assertEqual(cfg['timeout_seconds'], 25)
+
+    def test_codex_astra_model_and_effort_are_forwarded(self):
+        command = review.build_command(
+            'codex', str(self.fake),
+            {'model': 'gpt-6-astra', 'effort': 'medium'}, self.root, self.root)
+        self.assertEqual(command[command.index('--model') + 1], 'gpt-6-astra')
+        self.assertIn('model_reasoning_effort="medium"', command)
+        self.assertEqual(command[command.index('--sandbox') + 1], 'read-only')
+        self.assertNotIn('--force', command)
+        self.assertNotIn('--yolo', command)
+
+    def test_cli_model_and_effort_override_config(self):
+        config = self.root / 'config.json'
+        config.write_text(json.dumps({'reviewers': {'codex': {
+            'model': 'other-model', 'effort': 'low', 'binary': str(self.fake)}}}))
+        self.fake.write_text(
+            '#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n'
+            'assert sys.argv[sys.argv.index("--model") + 1] == "gpt-6-astra"\n'
+            'assert \'model_reasoning_effort="medium"\' in sys.argv\n'
+            'Path(sys.argv[sys.argv.index("--output-last-message") + 1]).write_text('
+            '"No blockers.\\nREADY FOR MAIN AGENT VERIFICATION\\n")\n',
+            encoding='utf-8')
+        self.fake.chmod(0o755)
+        prompt = self.root / 'prompt.md'
+        prompt.write_text('Review the change.\n', encoding='utf-8')
+        argv = ['review.py', '--reviewer', 'codex', '--config', str(config),
+                '--workspace', str(self.root), '--prompt-file', str(prompt),
+                '--output-dir', str(self.root / 'runs'),
+                '--model', 'gpt-6-astra', '--effort', 'medium']
+        with patch.object(sys, 'argv', argv):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = review.main()
+        self.assertEqual(code, 0)
+        meta = json.loads(next((self.root / 'runs').glob('*/metadata.json')).read_text())
+        self.assertEqual(meta['requested_model'], 'gpt-6-astra')
+        self.assertEqual(meta['requested_effort'], 'medium')
+
+    def test_blank_effort_refuses(self):
+        config = self.root / 'config.json'
+        config.write_text('{}\n', encoding='utf-8')
+        argv = ['review.py', '--reviewer', 'codex', '--config', str(config), '--effort', '   ', '--check']
+        with patch.object(sys, 'argv', argv):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = review.main()
+        self.assertEqual(code, 1)
 
     def test_model_override_is_literal_argument(self):
         value = 'model[$(touch sentinel)]'

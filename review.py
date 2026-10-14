@@ -199,6 +199,7 @@ def main():
     parser.add_argument('--workspace', type=Path, default=Path.cwd())
     parser.add_argument('--prompt-file', type=Path)
     parser.add_argument('--model', help='Exact reviewer model; no local fallback')
+    parser.add_argument('--effort', help='Codex reasoning effort, such as medium; no local fallback')
     parser.add_argument('--config', type=Path, default=config_path())
     parser.add_argument('--check', action='store_true', help='Check reviewer login (and Cursor models)')
     parser.add_argument('--output-dir', type=Path, default=Path(os.environ.get(
@@ -214,6 +215,10 @@ def main():
         options = dict(config['reviewers'][reviewer])
         if args.model:
             options['model'] = args.model
+        if args.effort is not None:
+            if not args.effort.strip():
+                raise ValueError('effort must be a non-empty string')
+            options['effort'] = args.effort
         if args.check:
             binary = binary_for(reviewer, options)
             checks = [['status'], ['models']] if reviewer == 'cursor' else [['login', 'status']]
@@ -222,6 +227,7 @@ def main():
                 if result.returncode:
                     return result.returncode
             print('Requested model:', options.get('model') or 'Codex configured default')
+            print('Requested effort:', options.get('effort') or 'unset')
             print('Login check only; run an actual review to verify end-to-end access.')
             return 0
         if not args.prompt_file:

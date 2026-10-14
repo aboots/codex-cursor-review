@@ -7,6 +7,7 @@ reviewer runs through its CLI in the background, using your own account.
 **Default:** Codex implements → Cursor / **Opus 5.5 medium** reviews → Codex
 checks the findings, fixes valid issues, tests, and requests a follow-up review.
 The reverse direction—Cursor implements, Codex reviews—is also supported.
+**Claude Code** implements → Codex / **GPT-6 Astra medium** (`gpt-6-astra`) reviews.
 
 **Not a review after every prompt.** The installed policy requests reviews for
 substantial, difficult, or consequential code and experiment changes. Explanations,
@@ -77,7 +78,9 @@ python3 install.py --main codex --with-council --dry-run
 |---|---|---|
 | Codex (default) | Cursor, Opus 5.5 medium | `python3 install.py --main codex --with-council` |
 | Cursor | Codex, configured Codex model with medium effort | `python3 install.py --main cursor --project /path/to/project --with-council` |
-| Both, depending on the editor you use | The other agent | `python3 install.py --main both --project /path/to/project --with-council` |
+| Claude Code | Codex, GPT-6 Astra medium | `python3 install.py --main claude --with-council` |
+| Codex and Cursor | The other agent | `python3 install.py --main both --project /path/to/project --with-council` |
+| Codex, Cursor, and Claude Code | The other agent; Claude Code uses Astra medium | `python3 install.py --main all --project /path/to/project --with-council` |
 
 Codex instructions are installed in `$CODEX_HOME/AGENTS.md` (normally
 `~/.codex/AGENTS.md`), shared by its CLI and extension on that host. Cursor
@@ -85,11 +88,17 @@ main-agent rules are **project-scoped** in
 `<project>/.cursor/rules/codex-cursor-review.mdc`; rerun with `--project` for each
 project where Cursor should implement and Codex should review. The rule includes
 a local executable path; avoid committing that server-specific generated file.
+Claude Code instructions are installed in `~/.claude/CLAUDE.md`, shared by the
+Claude Code CLI and extension on that host. Start a new Claude Code conversation
+after installing.
 
-`--main cursor` does not delete an already-installed Codex policy. Each policy
-passes the reviewer explicitly, so installing both cannot make either agent
-review itself accidentally. A session already acting as reviewer must never
-launch another reviewer recursively.
+`--main cursor` and `--main claude` do not delete an already-installed Codex
+policy. Each policy passes the reviewer explicitly, so installing more than one
+cannot make an agent review itself accidentally. A session already acting as
+reviewer must never launch another reviewer recursively. The Claude Code command
+pins `--model gpt-6-astra --effort medium`. That pin is the installed default for
+Claude Code; it does not change the Cursor → Codex path, which still uses the
+account's configured Codex model unless you pass `--model`.
 
 ## When reviews happen
 
@@ -128,6 +137,11 @@ availability can differ by account and over time. Run `cursor-agent models` on
 each server. No automatic fallback to another provider/model is implemented.
 Tell your main agent “use MODEL as reviewer for this task” for a one-off override.
 
+Claude Code's installed policy does not use that null default. Its command is
+`--reviewer codex --model gpt-6-astra --effort medium` (GPT-6 Astra, medium
+reasoning). Codex CLI 0.153.0 or newer is required for Astra. A one-off
+`--model` or `--effort` still overrides that invocation when you ask for it.
+
 For CLIs outside PATH, add `"binary": "/absolute/path/to/cursor-agent"` or
 `"binary": "/absolute/path/to/codex"` to that reviewer's options. Use a CLI
 executable, not the Cursor desktop executable. The installer preserves configured
@@ -154,6 +168,14 @@ private data out of the request; the selected provider receives this context.
   --workspace /path/to/project \
   --prompt-file /path/to/request.md \
   --model YOUR_CODEX_MODEL
+
+# Claude Code's installed reviewer: Codex GPT-6 Astra at medium effort.
+~/.local/bin/codex-cursor-review \
+  --reviewer codex \
+  --model gpt-6-astra \
+  --effort medium \
+  --workspace /path/to/project \
+  --prompt-file /path/to/request.md
 ```
 
 Cursor runs with `--mode ask`; Codex runs with `--sandbox read-only` and approvals
@@ -230,12 +252,13 @@ leave both conflicting policies silently active. Legacy `model` and
 `timeout_seconds` JSON settings migrate without changing the chosen model.
 Old review archives stay local. Do not copy them into this repository.
 
-To uninstall, remove the marked `codex-cursor-review:begin/end` policy block and
-the generated Cursor rule, then remove `~/.local/bin/codex-cursor-review`. If you
-also want to remove Council, remove only its server entry from the Codex TOML and
-Cursor MCP JSON (or use `codex mcp remove council` for Codex). Preserve other MCP
-servers and your review archives. Backups can help recover earlier settings;
-don't blindly restore them over newer unrelated changes.
+To uninstall, remove the marked `codex-cursor-review:begin/end` policy block, the
+generated Cursor rule, and the same marked block in `~/.claude/CLAUDE.md`, then
+remove `~/.local/bin/codex-cursor-review`. If you
+also want to remove Council, remove only its server entry from the Codex TOML,
+Cursor MCP JSON, and `~/.claude.json` (or use `codex mcp remove council` for Codex).
+Preserve other MCP servers and your review archives. Backups can help recover
+earlier settings; don't blindly restore them over newer unrelated changes.
 
 ## Validation and scope
 
@@ -259,7 +282,10 @@ from a remote shell.
 
 [MrLesk's Agents Council](https://github.com/mrlesk/agents-council) supplies shared
 MCP discussions, but its summon tool supports Claude Code/Codex, not Cursor. This
-small helper supplies the separate Cursor process and persisted review results.
+small helper supplies the separate Cursor process, the pinned Codex GPT-6 Astra
+review used by Claude Code, and persisted review results. `--with-council` also
+registers Council for Claude Code in `~/.claude.json` when `--main claude` or
+`--main all` is selected. Other install modes leave that file unchanged.
 
 [Andrew Vaughan's Agent Council](https://github.com/andrewvaughan/agent-council)
 is a collection of persona/workflow skills, and

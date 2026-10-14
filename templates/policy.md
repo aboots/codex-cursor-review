@@ -31,11 +31,11 @@ For qualifying work:
    Council 0.4.0 has a single current session; do not replace another active one.
    Council is optional: a full local review is sufficient when it is unavailable.
 3. Invoke the separate reviewer:
-   `__HELPER__ --reviewer __REVIEWER__ --workspace <absolute-path> --prompt-file <request-file>`
-   The user can choose a reviewer model with `--model '<exact model ID>'` or the
-   per-reviewer config in `~/.config/codex-cursor-review/config.json`.
-   Do not silently switch reviewer/provider/model on failure. Cursor's default
-   is Opus 5.5 medium (`claude-opus-5-5-medium`); verify availability per account.
+   `__HELPER__ --reviewer __REVIEWER____MODEL_FLAGS__ --workspace <absolute-path> --prompt-file <request-file>`
+   The user can choose a reviewer model with `--model '<exact model ID>'` and, for
+   Codex, a reasoning effort with `--effort '<level>'`, or use the per-reviewer
+   config in `~/.config/codex-cursor-review/config.json`.
+   Do not silently switch reviewer/provider/model on failure. __REVIEWER_NOTE__
 4. Read all findings and metadata. Exit 0 means a review returned, NOT approval.
    Assess findings against the actual code/evidence, fix valid problems, document
    disagreements, run relevant checks and re-review substantive fixes. Request

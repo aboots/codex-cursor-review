@@ -22,6 +22,8 @@ SOURCE = Path(__file__).resolve().parent
 BEGIN = '<!-- codex-cursor-review:begin -->'
 END = '<!-- codex-cursor-review:end -->'
 COUNCIL_VERSION = '0.4.0'
+CLAUDE_REVIEWER_MODEL = 'gpt-6-astra'
+CLAUDE_REVIEWER_EFFORT = 'medium'
 
 
 def managed_text(existing, body):
@@ -111,12 +113,39 @@ def install_council(home):
     return root / 'council'
 
 
+def selected_mains(main):
+    if main == 'both':
+        return ('codex', 'cursor')
+    if main == 'all':
+        return ('codex', 'cursor', 'claude')
+    return (main,)
+
+
 def policy(main, helper):
     reviewer = 'cursor' if main == 'codex' else 'codex'
+    if main == 'claude':
+        model_flags = ' --model ' + CLAUDE_REVIEWER_MODEL + ' --effort ' + CLAUDE_REVIEWER_EFFORT
+        reviewer_note = (
+            "Claude Code's installed reviewer is Codex GPT-6 Astra at medium effort "
+            '(`' + CLAUDE_REVIEWER_MODEL + '`, `--effort ' + CLAUDE_REVIEWER_EFFORT + '`).'
+        )
+    elif main == 'cursor':
+        model_flags = ''
+        reviewer_note = (
+            "The Codex reviewer uses the account's configured model with medium effort "
+            'unless `--model` or `--effort` overrides it.'
+        )
+    else:
+        model_flags = ''
+        reviewer_note = (
+            "Cursor's default is Opus 5.5 medium (`claude-opus-5-5-medium`); "
+            'verify availability per account.'
+        )
     # A quoted absolute command is valid even when the user's home contains spaces.
     import shlex
     return (read(SOURCE / 'templates/policy.md').replace('__MAIN__', main)
-            .replace('__REVIEWER__', reviewer).replace('__HELPER__', shlex.quote(str(helper))))
+            .replace('__REVIEWER__', reviewer).replace('__HELPER__', shlex.quote(str(helper)))
+            .replace('__MODEL_FLAGS__', model_flags).replace('__REVIEWER_NOTE__', reviewer_note))
 
 
 def same_server(found, expected):
@@ -137,14 +166,15 @@ def plan_install(home, codex_home, main, project, with_council):
     config_file = home / '.config/codex-cursor-review/config.json'
     import review
     config = review.load_config(config_file)
-    config['default_reviewer'] = 'codex' if main == 'cursor' else 'cursor'
+    mains = selected_mains(main)
+    config['default_reviewer'] = 'codex' if main in ('cursor', 'claude') else 'cursor'
     plan.append((config_file, json.dumps(config, indent=2) + '\n', None))
-    if main in ('codex', 'both'):
+    if 'codex' in mains:
         if (codex_home / 'AGENTS.override.md').exists():
             print('Warning: AGENTS.override.md takes precedence. Merge the installed policy into that file to activate it.', file=sys.stderr)
         path = codex_home / 'AGENTS.md'
         plan.append((path, managed_text(read(path), policy('codex', helper)), None))
-    if main in ('cursor', 'both'):
+    if 'cursor' in mains:
         if project is None or not project.is_dir():
             raise ValueError('--project <existing-directory> is required for Cursor main-agent rules')
         path = project / '.cursor/rules/codex-cursor-review.mdc'
@@ -153,6 +183,9 @@ def plan_install(home, codex_home, main, project, with_council):
             raise ValueError('An unrelated Cursor rule exists at ' + str(path))
         header = '---\ndescription: Independent review for substantial code and experiments\nalwaysApply: true\n---\n\n'
         plan.append((path, managed_text(existing or header, policy('cursor', helper)), None))
+    if 'claude' in mains:
+        path = home / '.claude/CLAUDE.md'
+        plan.append((path, managed_text(read(path), policy('claude', helper)), None))
     if with_council:
         command = str(home / '.local/share/agents-council' / COUNCIL_VERSION / 'package/council')
         path = codex_home / 'config.toml'
@@ -187,6 +220,21 @@ def plan_install(home, codex_home, main, project, with_council):
         if 'council' not in entries:
             entries['council'] = entry
             plan.append((path, json.dumps(parsed, indent=2, ensure_ascii=False) + '\n', None))
+        if 'claude' in mains:
+            path = home / '.claude.json'
+            parsed = json.loads(read(path) or '{}')
+            if not isinstance(parsed, dict):
+                raise ValueError('Claude Code configuration must be a JSON object')
+            servers = parsed.get('mcpServers', {})
+            if not isinstance(servers, dict):
+                raise ValueError('Claude Code mcpServers must be a JSON object')
+            parsed['mcpServers'] = servers
+            entry = {'command': command, 'args': ['mcp', '-n', 'Claude Code']}
+            if 'council' in servers and not same_server(servers['council'], entry):
+                raise ValueError('Existing different Claude Code council settings; preserve/merge them manually')
+            if 'council' not in servers:
+                servers['council'] = entry
+                plan.append((path, json.dumps(parsed, indent=2, ensure_ascii=False) + '\n', None))
     for path, _, _ in plan:
         if path.is_symlink():
             raise ValueError('Refusing to replace symlink: ' + str(path))
@@ -195,9 +243,9 @@ def plan_install(home, codex_home, main, project, with_council):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--main', choices=['codex', 'cursor', 'both'], default='codex')
+    parser.add_argument('--main', choices=['codex', 'cursor', 'claude', 'both', 'all'], default='codex')
     parser.add_argument('--project', type=Path, help='Install Cursor main-agent rule in this existing project')
-    parser.add_argument('--with-council', action='store_true', help='Download pinned Council and register in both clients')
+    parser.add_argument('--with-council', action='store_true', help='Download pinned Council and register it for Codex, Cursor, and Claude Code when that main agent is selected')
     parser.add_argument('--home', type=Path, help='Installation home (use a temp directory to preview/test)')
     parser.add_argument('--codex-home', type=Path, help='Override CODEX_HOME for Codex configuration')
     parser.add_argument('--dry-run', action='store_true', help='Print destinations; write/download nothing')

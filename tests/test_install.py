@@ -84,6 +84,87 @@ class InstallTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             install.plan_install(self.home, self.codex, 'cursor', None, False)
 
+    def test_all_requires_project(self):
+        with self.assertRaises(ValueError):
+            install.plan_install(self.home, self.codex, 'all', None, False)
+
+    def test_codex_main_policy_stays_on_cursor(self):
+        self.codex.mkdir()
+        self.apply(main='codex')
+        text = (self.codex / 'AGENTS.md').read_text()
+        self.assertIn('--reviewer cursor', text)
+        self.assertIn('claude-opus-5-5-medium', text)
+        self.assertNotIn('gpt-6-astra', text)
+        self.assertFalse((self.home / '.claude/CLAUDE.md').exists())
+
+    def test_claude_install_pins_astra_medium_and_is_idempotent(self):
+        self.apply(main='claude')
+        path = self.home / '.claude/CLAUDE.md'
+        text = path.read_text()
+        self.assertIn('--reviewer codex --model gpt-6-astra --effort medium', text)
+        self.assertIn('The main agent is claude', text)
+        self.assertNotIn('--reviewer cursor', text)
+        self.assertEqual(text.count(install.BEGIN), 1)
+        self.apply(main='claude')
+        self.assertEqual(path.read_text(), text)
+        self.assertEqual(list(path.parent.glob('*.backup-*')), [])
+        cfg = json.loads((self.home / '.config/codex-cursor-review/config.json').read_text())
+        self.assertEqual(cfg['default_reviewer'], 'codex')
+        self.assertIsNone(cfg['reviewers']['codex']['model'])
+        self.assertEqual(cfg['reviewers']['codex']['effort'], 'medium')
+        self.assertEqual(cfg['reviewers']['cursor']['model'], 'claude-opus-5-5-medium')
+
+    def test_claude_preserves_existing_instructions(self):
+        path = self.home / '.claude/CLAUDE.md'
+        path.parent.mkdir(parents=True)
+        path.write_text('# My Claude instructions\nKeep this.\n')
+        self.apply(main='claude')
+        text = path.read_text()
+        self.assertIn('Keep this.', text)
+        self.assertIn('gpt-6-astra', text)
+        self.assertEqual(text.count(install.BEGIN), 1)
+
+    def test_all_installs_every_main_policy(self):
+        self.codex.mkdir()
+        self.apply(main='all')
+        self.assertIn('--reviewer cursor', (self.codex / 'AGENTS.md').read_text())
+        cursor = (self.project / '.cursor/rules/codex-cursor-review.mdc').read_text()
+        self.assertIn('--reviewer codex', cursor)
+        self.assertNotIn('gpt-6-astra', cursor)
+        claude = (self.home / '.claude/CLAUDE.md').read_text()
+        self.assertIn('--model gpt-6-astra', claude)
+        self.assertIn('--effort medium', claude)
+
+    def test_claude_council_preserves_other_settings(self):
+        path = self.home / '.claude.json'
+        path.write_text(json.dumps({'numStartups': 3, 'mcpServers': {'other': {'command': 'keep'}}}))
+        self.codex.mkdir()
+        (self.codex / 'config.toml').write_text('model = "keep-me"\n')
+        self.apply(main='claude', council=True)
+        data = json.loads(path.read_text())
+        self.assertEqual(data['numStartups'], 3)
+        self.assertEqual(data['mcpServers']['other']['command'], 'keep')
+        self.assertEqual(data['mcpServers']['council']['args'], ['mcp', '-n', 'Claude Code'])
+        compact = json.dumps(data, separators=(',', ':'))
+        path.write_text(compact)
+        self.apply(main='claude', council=True)
+        self.assertEqual(path.read_text(), compact)
+
+    def test_claude_council_conflict_refuses(self):
+        path = self.home / '.claude.json'
+        path.write_text(json.dumps({'mcpServers': {'council': {'command': 'existing'}}}))
+        with self.assertRaises(ValueError):
+            self.apply(main='claude', council=True)
+        self.assertFalse((self.home / '.local/bin/codex-cursor-review').exists())
+        self.assertEqual(json.loads(path.read_text())['mcpServers']['council']['command'], 'existing')
+
+    def test_claude_json_list_refuses(self):
+        path = self.home / '.claude.json'
+        path.write_text('[]')
+        with self.assertRaises(ValueError):
+            self.apply(main='claude', council=True)
+        self.assertEqual(path.read_text(), '[]')
+
     def test_malformed_markers_refuse(self):
         for text in [install.BEGIN, install.END, install.END + install.BEGIN, install.BEGIN * 2 + install.END * 2]:
             with self.assertRaises(ValueError): install.managed_text(text, 'new policy')

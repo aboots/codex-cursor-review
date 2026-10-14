@@ -28,6 +28,12 @@ Pre-publication validation on 2026-10-11:
   binaries have not been live-tested here. Their exact published package hashes
   are recorded, and each install must match them.
 
+Claude Code → Codex GPT-6 Astra medium is covered by offline installer and CLI
+tests (`--main claude`, `--model gpt-6-astra`, `--effort medium`). The offline
+suite is 50 tests and passed locally with this change. It was not live-tested
+against an Astra account. The Codex read-only sandbox limitation above still
+applies to that direction.
+
 Raw review transcripts, account data and private machine paths stay outside Git.
 Model identifiers/effort are requested CLI settings, not independent attestation
 of provider routing. Reviewers inspect supplied evidence/code but do not execute

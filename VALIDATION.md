@@ -34,6 +34,30 @@ suite is 50 tests and passed locally with this change. It was not live-tested
 against an Astra account. The Codex read-only sandbox limitation above still
 applies to that direction.
 
+Antigravity and Claude Code (2026-10-19, macOS arm64, Python 3.14):
+
+- **Offline suite: 68 tests passed.** New coverage: Antigravity main-agent rules
+  (`~/.gemini/GEMINI.md`, existing `AGENTS.md` reuse, idempotency), `--reviewer`
+  for one or all mains and `main=reviewer` pairs, refusal of self-review and
+  unknown names before any write, Antigravity Council merge (empty file, other
+  servers preserved, conflicts refused), and the Claude Code and Gemini adapters.
+- **Fresh isolated install** with `--main all --reviewer antigravity=claude`
+  wrote the expected policy and reviewer command for all four main agents.
+- **Gemini reviewer (agy 1.4.2, `gemini-4-argon-high`) live:** prompt on stdin
+  without a TTY returned normally (no hang). Writes, shell commands, web/URL
+  access and reads outside the workspace were auto-denied; workspace file reads
+  worked. Two real review rounds of this change: round 1 returned CHANGES
+  REQUIRED (it found that `agy --mode plan` only injects a `/plan` macro, plus
+  diagnostics gaps); after fixes, round 2 returned READY FOR MAIN AGENT
+  VERIFICATION.
+- **Claude Code reviewer (2.1.301, `claude-opus-5-5`, `--effort medium`) live:**
+  plan mode with Read/Grep/Glob only read a fixture and could not write; an
+  end-to-end helper review found a planted off-by-one bug and returned CHANGES
+  REQUIRED.
+- **Not live-tested here:** Antigravity as the *main* agent loading the installed
+  global rule, and Council inside Antigravity. Google's Gemini CLI rejects
+  personal Google sign-in, so the Gemini reviewer uses `agy` only.
+
 Raw review transcripts, account data and private machine paths stay outside Git.
 Model identifiers/effort are requested CLI settings, not independent attestation
 of provider routing. Reviewers inspect supplied evidence/code but do not execute

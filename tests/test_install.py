@@ -25,8 +25,8 @@ class InstallTests(unittest.TestCase):
         self.project = self.home / 'project'
         self.project.mkdir()
 
-    def apply(self, main='both', council=False):
-        plan = install.plan_install(self.home, self.codex, main, self.project, council)
+    def apply(self, main='both', council=False, reviewer=None):
+        plan = install.plan_install(self.home, self.codex, main, self.project, council, reviewer)
         with contextlib.redirect_stdout(io.StringIO()):
             for path, content, mode in plan: install.put(path, content, mode)
         return plan
@@ -252,6 +252,96 @@ class InstallTests(unittest.TestCase):
         self.assertTrue((isolated / '.codex/AGENTS.md').exists())
         self.assertFalse((self.home / 'must-not-touch').exists())
 
+
+    def test_antigravity_main_installs_gemini_rules_and_is_idempotent(self):
+        self.apply(main='antigravity')
+        path = self.home / '.gemini/GEMINI.md'
+        text = path.read_text()
+        self.assertIn('The main agent is antigravity', text)
+        self.assertIn('--reviewer codex --model gpt-6-astra --effort medium', text)
+        self.assertIn("Antigravity's installed reviewer is Codex GPT-6 Astra", text)
+        self.apply(main='antigravity')
+        self.assertEqual(path.read_text(), text)
+        self.assertFalse((self.home / '.gemini/AGENTS.md').exists())
+        cfg = json.loads((self.home / '.config/codex-cursor-review/config.json').read_text())
+        self.assertEqual(cfg['default_reviewer'], 'codex')
+
+    def test_antigravity_uses_existing_agents_md_and_preserves_it(self):
+        path = self.home / '.gemini/AGENTS.md'; path.parent.mkdir()
+        path.write_text('# My global rules\nKeep this.\n')
+        self.apply(main='antigravity', reviewer='claude')
+        text = path.read_text()
+        self.assertIn('Keep this.', text)
+        self.assertIn('--reviewer claude --model claude-opus-5-5 --effort medium', text)
+        self.assertFalse((self.home / '.gemini/GEMINI.md').exists())
+
+    def test_reviewer_override_for_every_main(self):
+        self.codex.mkdir()
+        self.apply(main='all', reviewer='codex=gemini,cursor=claude,claude=gemini,antigravity=cursor')
+        codex = (self.codex / 'AGENTS.md').read_text()
+        self.assertIn('--reviewer gemini --model gemini-4-argon-high --workspace', codex)
+        self.assertIn('do not pass `--effort`', codex)
+        cursor = (self.project / '.cursor/rules/codex-cursor-review.mdc').read_text()
+        self.assertIn('--reviewer claude --model claude-opus-5-5 --effort medium', cursor)
+        claude = (self.home / '.claude/CLAUDE.md').read_text()
+        self.assertIn('--reviewer gemini --model gemini-4-argon-high', claude)
+        self.assertNotIn('gpt-6-astra', claude)
+        gemini = (self.home / '.gemini/GEMINI.md').read_text()
+        self.assertIn('--reviewer cursor --workspace', gemini)
+        cfg = json.loads((self.home / '.config/codex-cursor-review/config.json').read_text())
+        self.assertEqual(cfg['default_reviewer'], 'gemini')
+        self.assertEqual(cfg['reviewers']['gemini']['model'], 'gemini-4-argon-high')
+        self.assertEqual(cfg['reviewers']['claude']['model'], 'claude-opus-5-5')
+
+    def test_single_reviewer_applies_to_all_selected_mains(self):
+        self.apply(main='claude,antigravity', reviewer='cursor')
+        for path in (self.home / '.claude/CLAUDE.md', self.home / '.gemini/GEMINI.md'):
+            self.assertIn('--reviewer cursor --workspace', path.read_text())
+
+    def test_self_review_and_bad_reviewer_refuse_before_writes(self):
+        for main, reviewer in [('antigravity', 'gemini'), ('claude', 'claude'), ('codex', 'codex'),
+                               ('cursor', 'cursor'), ('claude', 'nobody'), ('claude', 'codex=cursor')]:
+            with self.subTest(main=main, reviewer=reviewer):
+                with self.assertRaises(ValueError): self.apply(main=main, reviewer=reviewer)
+        with self.assertRaises(ValueError): self.apply(main='codex,claude', reviewer='claude')
+        with self.assertRaises(ValueError): self.apply(main='claude,unknown')
+        with self.assertRaises(ValueError): self.apply(main='claude', reviewer='')
+        self.assertFalse((self.home / '.local/bin/codex-cursor-review').exists())
+        self.assertFalse((self.home / '.claude/CLAUDE.md').exists())
+
+    def test_antigravity_council_preserves_and_handles_empty_file(self):
+        path = self.home / '.gemini/config/mcp_config.json'; path.parent.mkdir(parents=True)
+        path.write_text('')
+        self.apply(main='antigravity', council=True)
+        data = json.loads(path.read_text())
+        self.assertEqual(data['mcpServers']['council']['args'], ['mcp', '-n', 'Antigravity'])
+        path.write_text(json.dumps({'mcpServers': {'other': {'url': 'https://keep.invalid/mcp'}}}))
+        self.apply(main='antigravity', council=True)
+        data = json.loads(path.read_text())
+        self.assertEqual(data['mcpServers']['other']['url'], 'https://keep.invalid/mcp')
+        self.assertIn('council', data['mcpServers'])
+        compact = json.dumps(data, separators=(',', ':'))
+        path.write_text(compact)
+        self.apply(main='antigravity', council=True)
+        self.assertEqual(path.read_text(), compact)
+        self.assertFalse((self.home / '.claude.json').exists())
+
+    def test_antigravity_council_conflict_refuses(self):
+        path = self.home / '.gemini/config/mcp_config.json'; path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'mcpServers': {'council': {'command': 'existing'}}}))
+        with self.assertRaises(ValueError): self.apply(main='antigravity', council=True)
+        self.assertFalse((self.home / '.gemini/GEMINI.md').exists())
+
+    def test_cli_reviewer_flag(self):
+        isolated = self.home / 'isolated2'
+        base = [sys.executable, str(install.SOURCE / 'install.py'), '--home', str(isolated),
+                '--main', 'antigravity', '--reviewer', 'claude']
+        result = subprocess.run(base, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--reviewer claude', (isolated / '.gemini/GEMINI.md').read_text())
+        result = subprocess.run(base[:-1] + ['gemini'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('cannot review its own work', result.stderr)
 
 class CouncilDownloadTests(unittest.TestCase):
     def exercise(self, missing=False, symlink=False, bad_pin=False):

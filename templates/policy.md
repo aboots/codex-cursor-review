@@ -23,17 +23,18 @@ For qualifying work:
 1. Implement and run appropriate unit tests/bounded smoke checks. Prepare a local
    request file with requirements, relevant actual diff/new-file content, callers,
    experiment invariants, validation commands and results, known limitations and
-   proposed job commands. Exclude credentials and unrelated/private data. The
-   Cursor ask reviewer cannot run shell commands; Codex may use read-only file
-   inspection. Provide the actual diff/evidence; never outsource tests or jobs
-   to the reviewer. Respect project-specific research constraints.
+   proposed job commands. Exclude credentials and unrelated/private data.
+   Cursor ask, Claude Code and Gemini reviewers cannot run shell commands; Codex
+   may use read-only file inspection. Provide the actual diff/evidence; never
+   outsource tests or jobs to the reviewer. Respect project-specific research
+   constraints.
 2. If Council MCP is available, inspect the current session before starting one.
    Council 0.4.0 has a single current session; do not replace another active one.
    Council is optional: a full local review is sufficient when it is unavailable.
 3. Invoke the separate reviewer:
    `__HELPER__ --reviewer __REVIEWER____MODEL_FLAGS__ --workspace <absolute-path> --prompt-file <request-file>`
    The user can choose a reviewer model with `--model '<exact model ID>'` and, for
-   Codex, a reasoning effort with `--effort '<level>'`, or use the per-reviewer
+   Codex or Claude Code, a reasoning effort with `--effort '<level>'`, or use the per-reviewer
    config in `~/.config/codex-cursor-review/config.json`.
    Do not silently switch reviewer/provider/model on failure. __REVIEWER_NOTE__
 4. Read all findings and metadata. Exit 0 means a review returned, NOT approval.

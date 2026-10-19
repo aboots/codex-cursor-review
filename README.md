@@ -1,13 +1,24 @@
-# Codex ↔ Cursor Review
+# Codex ↔ Cursor ↔ Claude Code ↔ Antigravity Review
 
 Let one agent implement substantial work and a separate agent review it before
 you trust the result or run an experiment. Keep working in your editor: the
 reviewer runs through its CLI in the background, using your own account.
 
-**Default:** Codex implements → Cursor / **Opus 5.5 medium** reviews → Codex
-checks the findings, fixes valid issues, tests, and requests a follow-up review.
-The reverse direction—Cursor implements, Codex reviews—is also supported.
-**Claude Code** implements → Codex / **GPT-6 Astra medium** (`gpt-6-astra`) reviews.
+Any of four agents can be the **main agent**, and any *other* one can be its
+**reviewer**:
+
+| Agent | As main agent (rules file) | As reviewer (`--reviewer`) | Default reviewer model |
+|---|---|---|---|
+| Codex | `~/.codex/AGENTS.md` | `codex` (`codex exec --sandbox read-only`) | GPT-6 Astra medium, or the account default for Cursor |
+| Cursor | `<project>/.cursor/rules/codex-cursor-review.mdc` | `cursor` (`cursor-agent --print --mode ask`) | Opus 5.5 medium (`claude-opus-5-5-medium`) |
+| Claude Code | `~/.claude/CLAUDE.md` | `claude` (`claude -p --permission-mode plan`, Read/Grep/Glob only) | Opus 5.5, `--effort medium` |
+| Antigravity | `~/.gemini/GEMINI.md` (or existing `~/.gemini/AGENTS.md`) | `gemini` (Antigravity CLI `agy`, headless) | Gemini 4 Argon High (`gemini-4-argon-high`) |
+
+**Default pairs:** Codex → Cursor reviews; Cursor → Codex; Claude Code → Codex
+GPT-6 Astra medium; Antigravity → Codex GPT-6 Astra medium. Choose any other
+pair with `--reviewer`. An agent can never be installed as its own reviewer.
+The main agent checks the findings, fixes valid issues, tests, and requests a
+follow-up review.
 
 **Not a review after every prompt.** The installed policy requests reviews for
 substantial, difficult, or consequential code and experiment changes. Explanations,
@@ -35,6 +46,15 @@ Model calls use your existing agent accounts and their applicable usage limits.
    cursor-agent models
    ```
 
+   Only the reviewer CLIs you use are needed. For the other reviewers:
+
+   - **Claude Code reviewer:** install the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code/setup)
+     and sign in once by running `claude`.
+   - **Gemini reviewer:** install the [Antigravity CLI](https://antigravity.google/docs/cli/headless)
+     (`curl -fsSL https://antigravity.google/cli/install.sh | bash`, read the script first),
+     run `agy` once to sign in, then `agy models` to confirm `gemini-4-argon-high` is listed.
+     Google's separate Gemini CLI no longer accepts personal Google sign-in, so it is not used.
+
    If a CLI is not on PATH, configure its absolute executable path below. A Codex
    extension's bundled CLI may work, but a standalone installation is easier to
    keep on PATH across extension updates. Login credentials are never copied here.
@@ -48,9 +68,14 @@ Model calls use your existing agent accounts and their applicable usage limits.
    ~/.local/bin/codex-cursor-review --reviewer cursor --check
    ```
 
+   Replace `--main` with your agent (`codex`, `cursor`, `claude`, `antigravity`,
+   a comma list, or `all`) and optionally add `--reviewer` (see below).
+
    `--with-council` installs the pinned **MrLesk Agents Council 0.4.0** native
    binary, verifies its SHA512 against `council-integrity.json` and npm metadata, and registers its MCP in both
-   Codex and Cursor. Node/npm is not needed for that step. It downloads only
+   Codex and Cursor, plus Claude Code (`~/.claude.json`) and Antigravity
+   (`~/.gemini/config/mcp_config.json`) when they are selected as main agent.
+   Node/npm is not needed for that step. It downloads only
    Council; agent CLIs and authentication remain separate.
 
    Council is optional. Omit `--with-council` for a local artifact-only workflow.
@@ -72,15 +97,32 @@ To preview changes without downloads or writes:
 python3 install.py --main codex --with-council --dry-run
 ```
 
-## Choose the main agent
+## Choose the main agent and reviewer
 
-| Main agent | Reviewer | Installation |
+| Main agent | Default reviewer | Installation |
 |---|---|---|
 | Codex (default) | Cursor, Opus 5.5 medium | `python3 install.py --main codex --with-council` |
 | Cursor | Codex, configured Codex model with medium effort | `python3 install.py --main cursor --project /path/to/project --with-council` |
 | Claude Code | Codex, GPT-6 Astra medium | `python3 install.py --main claude --with-council` |
+| Antigravity | Codex, GPT-6 Astra medium | `python3 install.py --main antigravity --with-council` |
 | Codex and Cursor | The other agent | `python3 install.py --main both --project /path/to/project --with-council` |
-| Codex, Cursor, and Claude Code | The other agent; Claude Code uses Astra medium | `python3 install.py --main all --project /path/to/project --with-council` |
+| All four | Defaults above | `python3 install.py --main all --project /path/to/project --with-council` |
+
+`--reviewer` picks a different reviewer: one name for every selected main agent,
+or `main=reviewer` pairs. Reviewer names are `codex`, `cursor`, `claude` and
+`gemini`.
+
+```bash
+# Antigravity implements, Claude Code (Opus 5.5 medium) reviews
+python3 install.py --main antigravity --reviewer claude
+# Claude Code implements, Gemini 4 Argon High reviews
+python3 install.py --main claude --reviewer gemini
+# Several mains at once, each with its own reviewer
+python3 install.py --main codex,claude,antigravity --reviewer codex=gemini,claude=codex,antigravity=claude
+```
+
+The installer refuses a pair where an agent would review itself (for example
+`--main antigravity --reviewer gemini`) before writing anything.
 
 Codex instructions are installed in `$CODEX_HOME/AGENTS.md` (normally
 `~/.codex/AGENTS.md`), shared by its CLI and extension on that host. Cursor
@@ -90,10 +132,11 @@ project where Cursor should implement and Codex should review. The rule includes
 a local executable path; avoid committing that server-specific generated file.
 Claude Code instructions are installed in `~/.claude/CLAUDE.md`, shared by the
 Claude Code CLI and extension on that host. Start a new Claude Code conversation
-after installing.
+after installing. Antigravity instructions are installed as global rules in
+`~/.gemini/GEMINI.md` (or an existing `~/.gemini/AGENTS.md`), shared by the
+Antigravity app and `agy`; start a new conversation after installing.
 
-`--main cursor` and `--main claude` do not delete an already-installed Codex
-policy. Each policy passes the reviewer explicitly, so installing more than one
+Installing one main agent does not delete another main agent's policy. Each policy passes the reviewer explicitly, so installing more than one
 cannot make an agent review itself accidentally. A session already acting as
 reviewer must never launch another reviewer recursively. The Claude Code command
 pins `--model gpt-6-astra --effort medium`. That pin is the installed default for
@@ -137,10 +180,21 @@ availability can differ by account and over time. Run `cursor-agent models` on
 each server. No automatic fallback to another provider/model is implemented.
 Tell your main agent “use MODEL as reviewer for this task” for a one-off override.
 
-Claude Code's installed policy does not use that null default. Its command is
-`--reviewer codex --model gpt-6-astra --effort medium` (GPT-6 Astra, medium
-reasoning). Codex CLI 0.153.0 or newer is required for Astra. A one-off
-`--model` or `--effort` still overrides that invocation when you ask for it.
+Claude Code's and Antigravity's installed policies do not use that null default.
+Their command is `--reviewer codex --model gpt-6-astra --effort medium` (GPT-6
+Astra, medium reasoning). Codex CLI 0.153.0 or newer is required for Astra. A
+one-off `--model` or `--effort` still overrides that invocation when you ask for it.
+
+The other two reviewers default to:
+
+```json
+"gemini": {"model": "gemini-4-argon-high"},
+"claude": {"model": "claude-opus-5-5", "effort": "medium"}
+```
+
+For Gemini the thinking level is part of the model ID (`agy models` lists
+`-low`/`-medium`/`-high`), so `--effort` is refused. Claude Code accepts
+`--effort` (`low` to `max`).
 
 For CLIs outside PATH, add `"binary": "/absolute/path/to/cursor-agent"` or
 `"binary": "/absolute/path/to/codex"` to that reviewer's options. Use a CLI
@@ -151,8 +205,8 @@ reviewer models when rerun; `--main` sets the manual CLI default reviewer.
 
 Prepare a request using [the template](examples/review-request.md). Include the
 requirements, actual relevant diff or new code, important callers/invariants,
-and real validation results. Cursor ask mode cannot run shell commands; Codex may use read-only inspection
-commands. Supply the actual relevant diff and never ask the reviewer to run tests
+and real validation results. Cursor ask, Claude Code and Gemini reviewers cannot run shell
+commands; Codex may use read-only inspection commands. Supply the actual relevant diff and never ask the reviewer to run tests
 or jobs. Keep credentials and unrelated
 private data out of the request; the selected provider receives this context.
 
@@ -179,7 +233,11 @@ private data out of the request; the selected provider receives this context.
 ```
 
 Cursor runs with `--mode ask`; Codex runs with `--sandbox read-only` and approvals
-set to never. No `--force`, `--yolo`, or sandbox bypass is used. The prompt allows read-only file inspection but forbids
+set to never. Claude Code runs `--print --permission-mode plan --tools Read,Grep,Glob
+--strict-mcp-config --no-session-persistence`. Gemini runs `agy --disable-slash-commands`
+with the prompt on stdin; headless `agy` auto-denies shell, writes, web/URL access
+and reads outside the workspace. No `--force`, `--yolo`, `--dangerously-skip-permissions`,
+`bypassPermissions` or sandbox bypass is used. The prompt allows read-only file inspection but forbids
 edits, tests/builds, experiments, jobs, network commands, recursive agents and MCP calls. Existing agent config,
 plugins and MCP servers may still be loaded: this is **not** a security boundary
 against all external actions. Use a dedicated account/environment if you need one.
@@ -191,6 +249,23 @@ Each call writes a private run directory under
 - `review.md`: reviewer answer (Codex uses its final-message file);
 - `metadata.json`: requested model, command, request hash, timestamps/status/verdict;
 - `stderr.txt`, plus `stdout.txt` for Codex progress.
+
+### Gemini (Antigravity CLI) reviewer notes
+
+- A denied tool call makes `agy` print nothing and exit 0. The helper reports
+  `Review BLOCKED: empty_review` and prints `agy`'s reason from stderr.
+- To avoid that, the helper prefixes the request with a tool constraint: use only
+  `view_file` inside the workspace, never shell, writes, web or subagents. Put
+  all evidence in the request; files outside the workspace cannot be read.
+- `agy --mode plan` is not used: it only expands a `/plan` macro that asks the
+  model to write plan artifacts. Slash-command expansion is disabled so commands
+  inside a reviewed diff are not expanded.
+- Read-only relies on headless auto-deny with no `permissions.allow` rules or
+  hooks in your `agy` settings. It is not a hard sandbox.
+- `agy` keeps conversation transcripts under `~/.gemini/antigravity-cli/`.
+- Upstream issue [#318](https://github.com/google-antigravity/antigravity-cli/issues/318)
+  reports `agy -p` hanging without a TTY. The helper does not use `-p`, and the
+  configured timeout still applies.
 
 No reviews are uploaded to GitHub. When Council is available, the main agent
 relays the review there with attribution; the reviewer does not need to call
@@ -253,10 +328,11 @@ leave both conflicting policies silently active. Legacy `model` and
 Old review archives stay local. Do not copy them into this repository.
 
 To uninstall, remove the marked `codex-cursor-review:begin/end` policy block, the
-generated Cursor rule, and the same marked block in `~/.claude/CLAUDE.md`, then
-remove `~/.local/bin/codex-cursor-review`. If you
+generated Cursor rule, and the same marked block in `~/.claude/CLAUDE.md` and
+`~/.gemini/GEMINI.md` (or `AGENTS.md`), then remove `~/.local/bin/codex-cursor-review`. If you
 also want to remove Council, remove only its server entry from the Codex TOML,
-Cursor MCP JSON, and `~/.claude.json` (or use `codex mcp remove council` for Codex).
+Cursor MCP JSON, `~/.claude.json` and `~/.gemini/config/mcp_config.json` (or use
+`codex mcp remove council` for Codex).
 Preserve other MCP servers and your review archives. Backups can help recover
 earlier settings; don't blindly restore them over newer unrelated changes.
 
@@ -266,7 +342,7 @@ earlier settings; don't blindly restore them over newer unrelated changes.
 python3 -m unittest discover -s tests -v
 ```
 
-Offline tests exercise both CLI adapters using fake processes, verdict/error
+Offline tests exercise all four CLI adapters using fake processes, verdict/error
 handling, timeouts, Unicode prompts, installer idempotency, config preservation,
 legacy-policy conflicts and isolated installations. They do not call models or
 require credentials. CI runs these checks on Linux/macOS and Python 3.11/3.13.
@@ -281,11 +357,13 @@ from a remote shell.
 ## Why this combination?
 
 [MrLesk's Agents Council](https://github.com/mrlesk/agents-council) supplies shared
-MCP discussions, but its summon tool supports Claude Code/Codex, not Cursor. This
-small helper supplies the separate Cursor process, the pinned Codex GPT-6 Astra
-review used by Claude Code, and persisted review results. `--with-council` also
-registers Council for Claude Code in `~/.claude.json` when `--main claude` or
-`--main all` is selected. Other install modes leave that file unchanged.
+MCP discussions, but its summon tool supports Claude Code/Codex, not Cursor or
+Antigravity. This small helper supplies separate read-only reviewer processes for
+all four agents (Cursor, Codex GPT-6 Astra, Claude Code, and Gemini through
+Antigravity's `agy`) and persisted review results. `--with-council` also registers
+Council for Claude Code in `~/.claude.json` and for Antigravity in
+`~/.gemini/config/mcp_config.json` when they are selected as main agent. Other
+install modes leave those files unchanged.
 
 [Andrew Vaughan's Agent Council](https://github.com/andrewvaughan/agent-council)
 is a collection of persona/workflow skills, and
